@@ -19,6 +19,12 @@
 - **修复**：改用 PowerShell `Set-Content` / `Add-Content -Encoding ASCII` 写用户目录文件
 - **教训**：工作区外配置（用户级 gradle.properties、环境变量等）一律走 Bash + PowerShell 通道
 
+### A3. SearchReplace 匹配 Java 源码里的转义字符串要带反斜杠
+- **症状**：改 `GoPromptBuilder.java` 中含 `{\"move\":...}` 的行时，SearchReplace 连报两次 `failed to match`，但 Read 复查发现改动其实已落盘
+- **根因**：Java 源码里的字符串字面量是 `\"`（反斜杠+引号），我在 `original_text` 里只写了裸引号 `"`，与磁盘字节不符 → 匹配失败
+- **修复**：`original_text` 逐字照抄磁盘内容，转义反斜杠一个都不能漏；报 failed 后先 Read 核对实际是否已改，再决定是否重试（本次第二次调用虽报错，改动其实已生效，盲目重试会写重复）
+- **教训**：编辑含转义字符的源码（Java/JSON 字符串里的 `\"`、正则里的 `\\`）时，匹配串必须与文件字节完全一致；工具报 failed ≠ 未生效，务必 Read 确认再动手，避免重复插入
+
 ---
 
 ## B. 网络与 GitHub 访问
@@ -90,6 +96,12 @@
 - **修复**：注释里不要出现字面的 `${`；举例改用纯文字描述
 - **教训**：被 expand 的模板文件（mods.toml）里，`${` 是保留语法，**注释也不例外**。想举例“变量占位”要用别的写法，不能直接写字面占位符
 
+### C9. Gson 不在裸单测类路径 → `NoClassDefFoundError: com/google/gson/JsonParser`
+- **症状**：`MoveParserTest` 4 例运行时报 `NoClassDefFoundError: com/google/gson/JsonParser`——`MoveParser` 用 Gson 解析 LLM 回复，编译能过，`compileJava` 也过，唯独跑单测炸
+- **根因**：主源码的 Gson 由 NeoForge / Minecraft 运行时提供（`dependencies` 里通过 MC 传递），但**裸 JUnit 测试类路径**（`testRuntimeOnly`）不含 MC，Gson 缺席
+- **修复**：`build.gradle` 加 `testImplementation 'com.google.code.gson:gson:2.10.1'`（与 MC 内置版本对齐）
+- **教训**：主源码用到「运行时由 MC/NeoForge 提供、但没显式声明为直接依赖」的库（Gson、Guava、Netty、Log4j 等），一旦要给它写脱离 MC 的纯 JUnit 单测，就得在 `testImplementation` 里补一份。compileJava 绿 ≠ 测试类路径完整，二者的依赖闭包不同
+
 ---
 
 ## D. PowerShell 语法
@@ -149,6 +161,18 @@
 - **症状**：详情页显示 `mcphone_deepseek.app.deepseek.desc` 这样的键名，玩家以为坏了
 - **修复**：先 `I18n.exists(key)` 再取，不存在返回 `""`
 
+### E11. 手机内容区仅约 110 逻辑像素宽，整行文字直画会漏出手机外
+- **症状**：大厅菜单页底部 hint 漏出手机右边界、画到世界背景上（用户真机截图）；en 文案更长溢得更远
+- **根因**：`PhoneCanvas` 不自动换行也不裁剪文字，`drawString` 画多长就多长，超 `c.width()` 即出手机；同页其他文字都走了 `GoUi.truncate`，唯独 hint 行漏了
+- **修复**：lang 键值在自然断点加 `\n`（翻译者按语言定断点），代码侧 split `\n` 逐行绘制 + 每行 truncate 兜底；同页其余正文行普查、给 en 超宽的补 truncate（waiting / online.empty / 终局结果行）
+- **教训**：手机小窗内**每一处** `drawString` 都要过宽度约束（truncate / 换行 / clipped）；新增文案行后按最长语言（en 通常比 zh 宽）估算宽度
+
+### E12. 把 GoUi.hLine 当竖滚动条误用 → 白线戳出手机
+- **症状**：模型选择页右侧一条白色横线从手机右缘戳到世界背景上（用户真机截图）；renderOnline 同款
+- **根因**：`GoUi.hLine(g, x, y, w, color)` 第 4 参是**宽度**；画「右侧滚动提示条」时把 `viewH`（列表高度）当 w 传进去 → 从手机右缘起画了一条长 viewH 的横线；竖条该用 `vLine`
+- **修复**：新增 `LobbyPage.scrollBar(...)`——仅 `maxScroll > 0` 才画（短列表不留多余线），右侧 1px 竖轨道 + 按滚动比例定位的拇指（thumbH 钳在 [6, viewH]）；renderAiModels / renderOnline / renderAi 三处滚动列表统一改走它
+- **教训**：GoUi 画线原语的参数语义是「函数名定方向、末参定该方向长度」，hLine/vLine 末参一个是宽一个是高，混用即画出方向错误的线；新增绘制调用后应对截图核对线的方向与端点。滚动提示条只在内容溢出时出现，否则短列表平白多一条线
+
 ---
 
 ## F. 其他
@@ -170,6 +194,42 @@
 - **根因**：`onPlayerLoggedIn` 对 FINISHED 房间只补发 `GameEnded` 包，没解绑 `playerRoom` 映射；而 `onCreateRoom`/`join` 都以 `playerRoom.containsKey(id)` 作“已在房间”的准入门槛，映射不清 → 永久拒绝。旧的“双方都离线才惰性回收房间”策略漏掉了两条路径：①离线且永不回来的玩家（房间泄漏）②离线被判负后重连的玩家（映射残留卡死）
 - **修复**：改为“终局即拆房”——`finishAndNotify` 先 `broadcastEnd` 给在线成员再 `disband`；`disband` 无条件解绑双方（含离线者）+ 清 `names` + 清指向房主的遗留邀请。三路终局（数子/认输/掉线判负）全走它。离线者重连时 `roomOf` 得 null 直接回大厅，绝不卡死
 - **教训**：权威服务器的“玩家→房间”登记表，必须在**每一条退出路径**（正常离场 / 终局 / 掉线超时 / 离线）都无条件解绑，且解绑要覆盖收不到结果包的离线玩家。凡以 `containsKey` 作准入门槛的登记表，写完就要逐条问：异常/超时/离线路径清了对应键没有？惰性“等两边都走再回收”最容易漏掉“永不再回来”和“被判负后重连”这两种人
+
+### G2. 客户端状态机的“自动推进”经 apply 递归回调 + tick 尾部清空请求 → 修死局反而造出新死局
+- **症状**：为修「零合法着不终局」的死局，PVE 加了「轮次方无合法着就自动代虚着」。初版 `autoPassStuck()` 复用 `apply(Move.pass())` 推进，`apply` 尾部又调 `advance()`（advance 里 autoPassStuck + 轮到 AI 就 requestAi）。结果：AI 落子后玩家恰好零合法着时，对局永久卡死——轮次停在 AI 却没有请求在跑。code-reviewer 复审判严重级（S1），编译与单测都报不出（`LocalAiGame.feed()` 直调 `Minecraft.getInstance()`，纯 JVM 跑不起来），只有真机走「AI 落子→玩家零合法着」残局才暴露
+- **根因**：两处叠加。①`autoPassStuck` 经 `apply` → `advance` → `autoPassStuck` 递归回环，内层 advance 已把轮次转回 AI 并 `requestAi`（挂上新请求 A1），外层 advance 再 `requestAi`（A2 覆盖 A1，A1 成孤儿）；②`tick` 成功分支把 `aiTurn = null` 放在 `apply()` **之后**——旧代码里 apply（AI 的着）后轮次必是玩家、advance 不会 requestAi，故尾部清空无害；但加了 autoPassStuck 后 apply 内可能已把轮次转回 AI 并挂上 A2，尾部的 `aiTurn=null` 正好把它抹掉 → 下一帧 tick 见 `aiTurn==null` 早退、玩家又因「非己方轮次」不能落子 → 死锁
+- **修复**：①`autoPassStuck` 改为**直接推进本地状态**（`history.add(pass)` / `koIndex=NO_KO` / `passCount++` / 达 2 则 finish / 否则翻 turn），不再回调 `apply`，消除递归回环（与服务端 `GameRoom.autoPassIfStuck` 写法对齐）；②`advance` 的 requestAi 加 `aiTurn == null` 幂等守卫；③`tick` 把 `aiTurn = null` 移到 `apply()` **之前**（先清已完成的旧请求，让 apply 内可能发出的新请求存活），`retries = 0` 仍留尾部（不能前移，否则非法重试计数被清零 → 无限重试）。顺带红利：AI 自己零合法着时 autoPassStuck 在 requestAi 前就代虚着了，不再白发 LLM 请求
+- **教训**：给已有状态机加「自动推进/兜底」逻辑时，警惕**复用主推进函数（apply）造成的递归回环**——主推进函数尾部往往挂着「推进后该谁行动」的副作用（发请求/翻轮次），递归会让副作用重复触发甚至自我覆盖；自动推进应尽量**直接改状态**、与主推进解耦。另一条独立教训：**“请求/任务句柄”的清空时机**必须相对「可能重新挂上句柄的调用」来定——把 `x = null` 放在一个内部可能重新赋值 `x` 的调用之后，等于抹掉它刚挂上的新值；清理已完成句柄要放在该调用**之前**。这类「静态状态机 + 直调 Minecraft.getInstance()」的类难以纯 JVM 单测，改动后除真机验收外，务必人工把关键调用链（tick→apply→advance→autoPassStuck→requestAi）逐帧走一遍
+
+---
+
+## H. Git / Windows 文件锁
+
+### H1. 运行中进程锁住的 jar 让 git rebase/checkout/reset 连环失败、工作区被"清空"
+- **症状**：`git rebase` 时 `warning: unable to unlink ... Invalid argument`，继而 "untracked working tree files would be overwritten" 中止；连 `rebase --abort` 都被同一检查拒绝；工作区源码全部消失（只存在于 git 对象中）
+- **根因**：rebase 先 checkout 基树、需从工作区**删除**被跟踪文件；而 `libs/mcphone-*.jar` 被运行中的 MC 客户端锁定、`gradle-wrapper.jar` 被 Gradle 守护进程锁定，Windows 拒绝 unlink；残留文件变"untracked"，触发 git 覆盖保护检查把后续一切写入（apply/abort/reset）连环挡住
+- **修复**：① `git rebase --quit` 结束 rebase 状态（不动工作区）② `git add` 两个锁文件登记进索引（磁盘内容本就和 blob 一致）③ `git symbolic-ref HEAD refs/heads/main` 重新接上 ④ `git reset --hard`——git 见这两文件内容无变化就不重写锁文件，其余全部正常恢复；整合无关历史时**改用 merge 而非 rebase**（merge 只增文件、不删本地文件，完全不碰锁着的 jar）
+- **教训**：Windows 上做会切换树的 rebase/checkout 前先确认没有运行中进程（游戏客户端 / Gradle 守护进程 / 专用服务器）持有仓库内文件；不能停进程就走 merge 路线或上述"先登记索引再 reset"恢复法。另：**push"挂起无输出"可能其实已成功**（本次 push 180s 超时但远端实际已收到），重试前先 `git ls-remote origin` 核实，避免误判重复操作
+
+---
+
+## I. LLM API 对接
+
+### I1. 推理模型思考 token 吃光 max_tokens + readNBytes 静默截断 → AI「空回复」双层陷阱
+- **症状**：PVE 每手弹红框「AI 回复里没有内容。」、AI 实际每手下随机着；日志 warn 只带被截断的响应体头部（停在 `choices[0].message.role`），看不出全貌
+- **根因**：双层叠加。①推理模型（deepseek-v4-pro / deepseek-flash 实测）把思考 token 也计入 `max_tokens`：旧闸 128 时 `reasoning_tokens:128 == completion_tokens:128`、`content` 空串、`finish_reason=length`；②提额后游戏内真盘推理链很长，响应体（`reasoning_content` 与 `content` 都占字节）冲破读取上限，`InputStream.readNBytes(cap)` **读满 cap 静默截断、不抛异常**，截半的 JSON 解析失败 → 又误判空回复。两层故障症状完全一样，只修一层真机依旧复现
+- **修复**：①`MAX_TOKENS` 提至 4096（上限只是天花板：非推理模型几十字符就停笔，花费不涨）；②`MAX_REPLY_BODY` 联动提至 128KB（估算 = MAX_TOKENS × 中文 UTF-8 ≈4.5 字节/token × 转义放大），且 `readNBytes` 读满上限时 warn「可能被截断」留证；③空回复不再每手弹框，改连续静默满 5 手汇总弹一次兜底提示
+- **教训**：接 LLM 时**回复预算与读取预算必须成对考虑**——输出上限（max_tokens）决定响应体大小上限（推理模型还会把思考回传进 body），读取侧字节上限要覆盖「上限 × 每 token 字节 × 转义放大」，否则边界静默截断、伪装成解析失败；截断点必须出声（日志），不然真机只能看到下游误判。另：排查「AI 回复为空」先按代码同参数 curl 一发实测、看 `usage.reasoning_tokens` 与 `finish_reason`，比任何猜测都快
+
+---
+
+## J. PowerShell / Windows 工具链
+
+### J1. PowerShell 5.1 默认按 ANSI 读无 BOM 的 UTF-8 → lang 审计 JSON 解析失败 + 脚本中文 literals 乱码
+- **症状**：i18n 审计脚本跑时 `ConvertFrom-Json` 报「无效的原语」；结果文件里中文小节标题全乱码；但键计数数据本身正常
+- **根因**：两处叠加。①`Get-Content -Raw` 不带 `-Encoding UTF8` 读无 BOM 的 UTF-8 lang 文件按 ANSI 解码 → 乱码字符破坏 JSON 串；②`.ps1` 脚本本身存为无 BOM UTF-8，PS 5.1 按 ANSI 解析源码 → 脚本内中文字面量在解析期就乱码（输出标题乱码由此来）
+- **修复**：读文件一律 `Get-Content -Encoding UTF8`；脚本纯 ASCII 化或带 BOM 保存；结果 `Out-File -Encoding UTF8` 写文件后用 Read 工具回读（控制台 GBK 同样乱码，不可信）
+- **教训**：本机默认 shell 是 Windows PowerShell 5.1：凡读无 BOM UTF-8 文本（json/lang/md）或跑含中文的脚本，**显式声明编码**；控制台显示乱码与文件内容乱码是两回事，别据控制台表象误判数据坏了
 
 ---
 

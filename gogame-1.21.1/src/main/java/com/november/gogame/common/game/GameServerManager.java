@@ -245,6 +245,11 @@ public final class GameServerManager {
         for (GameRoom room : List.copyOf(rooms.values())) {
             if (room.tick(now)) {          // 掉线宽限到点 → 判负终局
                 finishAndNotify(room);     // 发结果给在线成员 + 拆房（双方解绑、回收）
+                continue;
+            }
+            if (room.autoPassIfStuck()) {  // 轮次方无棋可下 → 代虚着（可能连锁到连续两虚着数子终局）
+                syncRoom(room);            // 双方看到 pass 计数/轮次推进；终局时先同步终局盘面
+                if (room.isFinished()) finishAndNotify(room);
             }
         }
     }

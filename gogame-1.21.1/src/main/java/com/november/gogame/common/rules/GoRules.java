@@ -127,6 +127,22 @@ public final class GoRules {
         return moves;
     }
 
+    /**
+     * {@code color} 在 {@code board} 上是否还有任何合法落子（不含 pass）——找到第一个就返回，
+     * 比 {@link #legalMoves} 全量枚举便宜。调用方据此给「零合法着」的一方代虚着：
+     * 否则唯一合法着是虚着却没人按，对局永久卡死（用户真机验收发现的终局死局）。
+     */
+    public static boolean hasLegalMove(Board board, Stone color, int koIndex) {
+        for (int y = 0; y < Board.SIZE; y++) {
+            for (int x = 0; x < Board.SIZE; x++) {
+                int idx = Board.index(x, y);
+                if (!board.at(idx).isEmpty() || idx == koIndex) continue;
+                if (play(board, Move.place(color, x, y), koIndex).legal()) return true;
+            }
+        }
+        return false;
+    }
+
     private static Outcome illegal(String reasonKey, Board board) {
         return new Outcome(false, reasonKey, board, 0, NO_KO);
     }

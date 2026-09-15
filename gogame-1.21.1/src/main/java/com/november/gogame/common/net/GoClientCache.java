@@ -61,6 +61,27 @@ public final class GoClientCache {
     }
 
     // ------------------------------------------------------------------
+    // 写（PVE 本地馈送）：仅由 client.ai.LocalAiGame 在客户端主线程调用
+    // ------------------------------------------------------------------
+    // 与上面的 S2C 通道互斥：PVE 期间没有服务器房间（联机在房中时大厅不显示 AI 入口，
+    // 反之亦然），两个写入方永远不会同时活跃。同为「主线程写、主线程读」，线程契约不变。
+
+    /** PVE：把本地推演的房间快照写进缓存（与 S2C 的 RoomState 同构，界面照常渲染） */
+    public static void feedLocalRoom(GoPayloads.RoomState state) {
+        room = state;
+    }
+
+    /** PVE：本地终局结果 */
+    public static void feedLocalResult(GameResult r) {
+        result = r;
+    }
+
+    /** PVE：本地错误键（玩家非法着 / AI 故障提示）。键一律无参数——toast 通道只传键 */
+    public static void localError(String reasonKey) {
+        lastError = reasonKey;
+    }
+
+    // ------------------------------------------------------------------
     // 读：客户端界面（Phase 3 的大厅页 / 全屏棋盘）
     // ------------------------------------------------------------------
 

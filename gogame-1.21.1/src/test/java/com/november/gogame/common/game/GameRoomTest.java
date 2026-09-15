@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.november.gogame.common.game.GameResult.EndReason;
 import com.november.gogame.common.game.GameRoom.ColorMode;
 import com.november.gogame.common.game.GameRoom.Phase;
+import com.november.gogame.common.rules.Board;
 import com.november.gogame.common.rules.GoRules;
 import com.november.gogame.common.rules.Move;
 import com.november.gogame.common.rules.Stone;
@@ -53,6 +54,13 @@ class GameRoomTest {
     }
     private static String resign(GameRoom room, UUID who) {
         return room.applyMove(who, -1, -1, Move.Kind.RESIGN);
+    }
+
+    /** 满盘铺一色（无空点）：双方都零合法着，供 autoPassIfStuck 验自动虚着 */
+    private static Board fullBoard(Stone fill) {
+        Board b = new Board();
+        for (int i = 0; i < Board.COUNT; i++) b.set(i, fill);
+        return b;
     }
 
     // ------------------------------------------------------------------
@@ -447,5 +455,88 @@ class GameRoomTest {
         assertNull(room.seatOf(stranger));
         assertEquals(Stone.EMPTY, room.colorOf(stranger));
         assertNotNull(room.seatOf(host));
+    }
+
+    // ------------------------------------------------------------------
+    // 自动代虚着（零合法着免死局）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("自动虚着：轮次方零合法着 → 代虚着一手，passCount+1、翻轮次、未终局")
+    void autoPassWhenNoLegalMove() {
+        UUID host = uid(), guest = uid();
+        GameRoom room = startedHostBlack(host, guest);
+        room.setupForTest(fullBoard(Stone.BLACK), Stone.WHITE, GoRules.NO_KO, 0);
+        assertTrue(room.autoPassIfStuck());
+        assertEquals(1, room.passCount());
+        assertEquals(Stone.BLACK, room.turn());          // 白虚着后轮到黑
+        assertFalse(room.isFinished());
+        assertEquals(1, room.moveNumber());
+        assertEquals(Move.Kind.PASS, room.history().get(0).kind());
+        assertEquals(Stone.WHITE, room.history().get(0).color());  // 代的是白的一手虚着
+        assertEquals(GoRules.NO_KO, room.koIndex());       // 虚着清劫
+    }
+
+    @Test
+    @DisplayName("自动虚着连锁：双方都零合法着 → 连续两虚着 → 数子终局（DOUBLE_PASS）")
+    void autoPassTwiceFinishesByScore() {
+        UUID host = uid(), guest = uid();
+        GameRoom room = startedHostBlack(host, guest);
+        room.setupForTest(fullBoard(Stone.BLACK), Stone.WHITE, GoRules.NO_KO, 0);
+        assertTrue(room.autoPassIfStuck());     // 白代虚着 → passCount=1
+        assertFalse(room.isFinished());
+        assertTrue(room.autoPassIfStuck());     // 黑代虚着 → passCount=2 → 终局
+        assertTrue(room.isFinished());
+        GameResult r = room.result();
+        assertNotNull(r);
+        assertEquals(EndReason.DOUBLE_PASS, r.reason());
+        assertTrue(r.hasScore());
+        assertTrue(r.blackWins());              // 全盘黑 → 黑 area 361、白 0
+    }
+
+    @Test
+    @DisplayName("自动虚着：有合法着 → 不代虚着，状态不变")
+    void autoPassNoopWhenLegalMoveExists() {
+        UUID host = uid(), guest = uid();
+        GameRoom room = startedHostBlack(host, guest);
+        room.setupForTest(new Board(), Stone.BLACK, GoRules.NO_KO, 0);   // 空盘，黑遍地可下
+        assertFalse(room.autoPassIfStuck());
+        assertEquals(0, room.passCount());
+        assertEquals(Stone.BLACK, room.turn());
+        assertFalse(room.isFinished());
+        assertEquals(0, room.moveNumber());
+    }
+
+    @Test
+    @DisplayName("自动虚着：对局挂起（一方掉线）→ 不代虚着，冻结原局面")
+    void autoPassNoopWhenSuspended() {
+        UUID host = uid(), guest = uid();
+        GameRoom room = startedHostBlack(host, guest);
+        room.disconnect(host, T0);              // 挂起
+        room.setupForTest(fullBoard(Stone.BLACK), Stone.WHITE, GoRules.NO_KO, 0);
+        assertFalse(room.autoPassIfStuck());    // 挂起中不代虚着
+        assertEquals(0, room.passCount());
+        assertFalse(room.isFinished());
+    }
+
+    @Test
+    @DisplayName("自动虚着：WAITING（未开局）→ 不代虚着")
+    void autoPassNoopWhenWaiting() {
+        UUID host = uid();
+        GameRoom room = new GameRoom(ROOM, host, ColorMode.HOST_PICKS, Stone.BLACK);
+        assertFalse(room.autoPassIfStuck());    // phase 守卫先拦
+    }
+
+    @Test
+    @DisplayName("自动虚着：已终局 → 不再代虚着")
+    void autoPassNoopWhenFinished() {
+        UUID host = uid(), guest = uid();
+        GameRoom room = startedHostBlack(host, guest);
+        room.setupForTest(fullBoard(Stone.BLACK), Stone.WHITE, GoRules.NO_KO, 0);
+        assertTrue(room.autoPassIfStuck());
+        assertTrue(room.autoPassIfStuck());     // 终局
+        assertTrue(room.isFinished());
+        assertFalse(room.autoPassIfStuck());    // 已终局 → 不再代虚着
+        assertEquals(2, room.passCount());      // passCount 未再增长
     }
 }

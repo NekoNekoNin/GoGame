@@ -212,6 +212,39 @@ public final class GameRoom {
     }
 
     /**
+     * 轮次方零合法着（空点全是自杀点之类）时替他虚着一手，免掉「唯一合法着是虚着
+     * 却没人按」的死局；连续两次后仍走既有数子终局。挂起中（任一方掉线）不代虚着：
+     * 对局冻结，重连后玩家应看到原局面自己继续。
+     *
+     * @return {@code true} 表示本次调用代虚着了一手（状态已推进，可能已终局）；
+     *         管理器据此 syncRoom / finishAndNotify
+     */
+    public boolean autoPassIfStuck() {
+        if (phase != Phase.PLAYING || anyDisconnected()) return false;
+        if (GoRules.hasLegalMove(board, turn, koIndex)) return false;
+
+        history.add(Move.pass(turn));
+        koIndex = GoRules.NO_KO;      // 虚着清劫，与 applyMove 走 GoRules.play 的语义一致
+        passCount++;
+        if (passCount >= 2) {         // 双方连续虚着 → 数子终局
+            finish(GameResult.byScore(Scoring.score(board)));
+            return true;
+        }
+        turn = turn.opponent();
+        return true;
+    }
+
+    // 测试钩子（包级私有）：直接摆一个残局供 GameRoomTest 验自动虚着；
+    // 正常对局的盘面只能由 applyMove 一手手推进，测试没法靠公开 API 摆出「全盘只剩单眼」
+    void setupForTest(Board b, Stone t, int ko, int passes) {
+        phase = Phase.PLAYING;
+        board = b;
+        turn = t;
+        koIndex = ko;
+        passCount = passes;
+    }
+
+    /**
      * 对局中一方<b>主动离场</b> = 认输（对手判胜）。与 {@link #applyMove} 里的 RESIGN 同果，
      * 但走的是「玩家点了离开房间」而非「在棋盘上认输」这条路，由管理器在收到 LeaveRoom 时调。
      *

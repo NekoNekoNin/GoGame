@@ -1,5 +1,6 @@
 package com.november.gogame.client.ui;
 
+import com.november.gogame.client.ai.LocalAiGame;
 import com.november.gogame.common.game.GameResult;
 import com.november.gogame.common.game.GameRoom;
 import com.november.gogame.common.net.GoClientCache;
@@ -269,6 +270,9 @@ public final class GoBoardScreen extends Screen {
             g.drawString(f, tr("gogame.board.waiting"), px, y + 2, SUBTLE, false);
         } else if (isSuspended(room)) {
             g.drawString(f, GoUi.truncate(f, tr("gogame.board.suspended"), pw), px, y + 2, WARN, false);
+        } else if (LocalAiGame.thinking()) {
+            // PVE：AI 请求在飞（HTTP 线程还没回 AiTurn），面板提示一行免得玩家以为卡死
+            g.drawString(f, GoUi.truncate(f, tr("gogame.ai.thinking"), pw), px, y + 2, ACCENT, false);
         }
 
         // 认输二次确认的问句画在 pass 那行位置（此刻 pass/resign 已隐藏）；Y 复用 init 存的 passRowY，不再另算一套公式（审查 W1）
@@ -361,7 +365,9 @@ public final class GoBoardScreen extends Screen {
             if (room != null && !confirmingResign && myTurn(room)) {
                 int[] xy = screenToBoard(mouseX, mouseY, layout());
                 if (xy != null && room.board().at(xy[0], xy[1]).isEmpty()) {
-                    GoNetwork.sendToServer(new GoPayloads.PlayMove(xy[0], xy[1], Move.Kind.PLACE));
+                    // PVE 走本地推演（LocalAiGame 自会校验非法着并馈送错误 toast），PVP 发服务端仲裁
+                    if (LocalAiGame.active()) LocalAiGame.playPlace(xy[0], xy[1]);
+                    else GoNetwork.sendToServer(new GoPayloads.PlayMove(xy[0], xy[1], Move.Kind.PLACE));
                     return true;
                 }
             }
@@ -381,7 +387,9 @@ public final class GoBoardScreen extends Screen {
     // ------------------------------------------------------------------
 
     private void send(Move.Kind kind) {
-        GoNetwork.sendToServer(new GoPayloads.PlayMove(-1, -1, kind));
+        // pass/resign 与落子同一分支逻辑：PVE 本地，PVP 发服务端
+        if (LocalAiGame.active()) LocalAiGame.playSpecial(kind);
+        else GoNetwork.sendToServer(new GoPayloads.PlayMove(-1, -1, kind));
     }
 
     private void doResign() {

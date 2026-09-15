@@ -19,6 +19,13 @@ class GoRulesTest {
 
     private static Board empty() { return new Board(); }
 
+    /** 满盘铺一色（无空点）：hasLegalMove 的“无处可下”极端盘 */
+    private static Board fullOf(Stone s) {
+        Board b = new Board();
+        for (int i = 0; i < Board.COUNT; i++) b.set(i, s);
+        return b;
+    }
+
     /** 便捷铺子：直接 set（绕过规则）构造待判定的局面 */
     private static void put(Board b, Stone s, int x, int y) { b.set(x, y, s); }
 
@@ -251,5 +258,45 @@ class GoRulesTest {
         GoRules.Outcome first = GoRules.play(koBoard(), Move.place(Stone.BLACK, 2, 2), GoRules.NO_KO);
         List<Move> moves = GoRules.legalMoves(first.board(), Stone.WHITE, first.koIndex());
         assertFalse(moves.contains(Move.place(Stone.WHITE, 2, 1))); // 劫点被排除
+    }
+
+    // ------------------------------------------------------------------
+    // hasLegalMove（零合法着早退扫描；驱动“自动代虚着”免死局）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("hasLegalMove：空盘双方都有合法着")
+    void hasLegalMoveOnEmptyBoard() {
+        Board b = empty();
+        assertTrue(GoRules.hasLegalMove(b, Stone.BLACK, GoRules.NO_KO));
+        assertTrue(GoRules.hasLegalMove(b, Stone.WHITE, GoRules.NO_KO));
+    }
+
+    @Test
+    @DisplayName("hasLegalMove：满盘无空点 → 双方都无合法着")
+    void hasLegalMoveOnFullBoard() {
+        Board b = fullOf(Stone.BLACK);
+        assertFalse(GoRules.hasLegalMove(b, Stone.BLACK, GoRules.NO_KO));
+        assertFalse(GoRules.hasLegalMove(b, Stone.WHITE, GoRules.NO_KO));
+    }
+
+    @Test
+    @DisplayName("hasLegalMove：黑两眼活棋、白填任一眼即自杀 → 白 false、黑 true（自杀分支）")
+    void hasLegalMoveWhiteStuckByTwoEyes() {
+        Board b = fullOf(Stone.BLACK);
+        b.clear(Board.index(0, 0));       // 眼 A（角）
+        b.clear(Board.index(18, 18));     // 眼 B（对角）：整块黑仅此两气
+        assertFalse(GoRules.hasLegalMove(b, Stone.WHITE, GoRules.NO_KO)); // 白下任一眼都无气且提不了黑
+        assertTrue(GoRules.hasLegalMove(b, Stone.BLACK, GoRules.NO_KO));  // 黑可填自己一眼（还剩一气）
+    }
+
+    @Test
+    @DisplayName("hasLegalMove：唯一空点被劫禁着 → 无合法着；解禁后（下之提满盘黑）→ 有")
+    void hasLegalMoveKoBlocksSolePoint() {
+        Board b = fullOf(Stone.BLACK);
+        int sole = Board.index(0, 0);
+        b.clear(sole);                    // 全盘黑，唯一空点 (0,0) 也是整块黑的唯一气
+        assertFalse(GoRules.hasLegalMove(b, Stone.WHITE, sole));         // 该点被劫禁 → 白无合法着
+        assertTrue(GoRules.hasLegalMove(b, Stone.WHITE, GoRules.NO_KO)); // 解禁 → 白下 (0,0) 提满盘黑，合法
     }
 }

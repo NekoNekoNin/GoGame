@@ -15,7 +15,8 @@ import net.minecraft.resources.ResourceLocation;
  *
  * 本类只提供 SPI 发现所需的最小实现——id、名字、图标、点开给哪一页。Phase 3 起
  * {@link LobbyPage} 已是真大厅（创建 / 凭号加入 / 在线邀请 / 响应邀请 / 离开）；对局一开始由
- * 大厅页跳全屏 {@code GoBoardScreen} 落子。AI 入口仍占位（Phase 4）。
+ * 大厅页跳全屏 {@code GoBoardScreen} 落子。Phase 4 的人机对弈入口见 {@link LobbyPage} 的
+ * AI / AI_SETTINGS 视图（选难度 + 执色 + 填 API Key，本地推演复用同一套棋盘界面）。
  *
  * id 用自己的命名空间 {@code gogame}：绝不继承 mcphone 内建的 PhoneApp 基类
  * （那会把命名空间写死成 mcphone，与本体将来的同名 App 撞车，撞车后登记者被静默丢弃）。
@@ -43,29 +44,13 @@ public final class GoApp implements IPhoneApp {
     public ResourceLocation getIconTexture() { return GoIcon.TEXTURE; }
 
     /**
-     * Phase 0 占位图标：程序化画一个简化围棋盘（木色底 + 网格 + 一黑一白两子），
-     * 不依赖 png，主屏图标即刻可见。Phase 5 会把正式贴图放到 getIconTexture 指向的
-     * assets/gogame/textures/app/go.png，供商店详情页等走 getIconTexture（而非
-     * renderIcon）的地方使用。
+     * 主屏图标：委托 {@link GoIcon#render} —— 圆角方木底 + 内缩棋盘与圆子，
+     * 外廓比例与 mcphone 原生 App 图标对齐。{@link #getIconTexture()} 指向的 png 供
+     * 商店详情页等走贴图的地方用，正式贴图 Phase 5 放到 assets/gogame/textures/app/go.png。
      */
     @Override
     public void renderIcon(GuiGraphics g, int x, int y, int size, float partialTick) {
-        int bg = 0xFFD9A85C;    // 木色底
-        int line = 0xFF6A4422;  // 深棕网格线
-        g.fill(x, y, x + size, y + size, bg);
-
-        int cells = 4;
-        int step = size / cells;
-        for (int i = 1; i < cells; i++) {
-            g.fill(x + i * step, y + 2, x + i * step + 1, y + size - 2, line);
-            g.fill(x + 2, y + i * step, x + size - 2, y + i * step + 1, line);
-        }
-
-        int r = Math.max(2, step / 2);
-        // 黑子（左上交叉点）
-        g.fill(x + step - r, y + step - r, x + step + r, y + step + r, 0xFF141414);
-        // 白子（右下交叉点）
-        g.fill(x + 3 * step - r, y + 3 * step - r, x + 3 * step + r, y + 3 * step + r, 0xFFF2F2F2);
+        GoIcon.render(g, x, y, size);
     }
 
     @Override

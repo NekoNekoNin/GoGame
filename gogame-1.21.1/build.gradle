@@ -147,6 +147,12 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Gson for the Phase 4 AI-layer tests (MoveParser). Main sources get Gson from the
+    // NeoForge/Minecraft compile classpath (provided at runtime by the game), but the
+    // bare unit-test classpath has neither, so declare it explicitly. Version matches
+    // the one Minecraft 1.21.1 ships.
+    testImplementation 'com.google.code.gson:gson:2.10.1'
 }
 
 test {
