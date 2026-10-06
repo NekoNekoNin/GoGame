@@ -45,8 +45,7 @@ public final class GoApp implements IPhoneApp {
 
     /**
      * 主屏图标：委托 {@link GoIcon#render} —— 圆角方木底 + 内缩棋盘与圆子，
-     * 外廓比例与 mcphone 原生 App 图标对齐。{@link #getIconTexture()} 指向的 png 供
-     * 商店详情页等走贴图的地方用，正式贴图 Phase 5 放到 assets/gogame/textures/app/go.png。
+     * 主屏和 {@link #getIconTexture()}（商店详情页）共用同一张圆角木质棋盘贴图。
      */
     @Override
     public void renderIcon(GuiGraphics g, int x, int y, int size, float partialTick) {

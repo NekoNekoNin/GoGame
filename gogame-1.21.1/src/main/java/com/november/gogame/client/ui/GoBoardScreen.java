@@ -1,6 +1,7 @@
 package com.november.gogame.client.ui;
 
 import com.november.gogame.client.ai.LocalAiGame;
+import com.november.gogame.client.icon.GoIcon;
 import com.november.gogame.common.game.GameResult;
 import com.november.gogame.common.game.GameRoom;
 import com.november.gogame.common.net.GoClientCache;
@@ -35,8 +36,8 @@ import java.util.UUID;
  * <h2>渲染分层（为何手动逐个画按钮，而不走 {@code super.render}）</h2>
  * {@code Screen.render} 默认把「压暗背景」和「画控件」两步绑在一起，无法在两者之间插入自绘层：
  * 若先 {@code super.render} 再画棋盘，控件会被棋盘/面板盖住；若先画棋盘再 {@code super.render}，
- * 它会把背景再压暗一次盖到棋盘上。故这里 {@code renderBackground} 只调一次，随后按
- * 背景 → 棋盘 → 面板/模态 → 逐个 {@code button.render} → toast 的顺序手动分层，完全掌控 z 序。
+ * 它会把背景再压暗一次盖到棋盘上。故这里使用自己的背景绘制，按
+ * 贴图背景 → 棋盘 → 面板/模态 → 逐个 {@code button.render} → toast 的顺序手动分层，完全掌控 z 序。
  * 控件仍经 {@code addRenderableWidget} 注册，点击路由走 {@code super.mouseClicked}（读 children），
  * 只是绘制自己接管——{@link Button#render} 自带 hover 判定，手动画同样有高亮。
  *
@@ -48,20 +49,20 @@ import java.util.UUID;
  */
 public final class GoBoardScreen extends Screen {
 
-    // ---- 面板配色：底是压暗的世界，故一律用浅色，与手机内页走 PhoneStyle 不同 ----
-    private static final int TITLE   = 0xFFFFFFFF;
-    private static final int BODY    = 0xFFE6E6E6;
-    private static final int SUBTLE  = 0xFFA8A8A8;
-    private static final int ACCENT  = 0xFF7FD1FF;   // 「轮到你」高亮
+    // ---- 面板配色：与深色背景配套；手机内页仍走 PhoneStyle ----
+    private static final int TITLE   = GoUi.IVORY;
+    private static final int BODY    = 0xFFD8E0D6;
+    private static final int SUBTLE  = 0xFF99AB9F;
+    private static final int ACCENT  = GoUi.JADE;
     private static final int WARN    = 0xFFFF8A8F;   // 掉线 / 挂起 / 认输确认
-    private static final int CARD    = 0x99000000;   // 右侧信息卡底，给黑白子与文字衬对比
+    private static final int CARD    = 0xF0182521;
     private static final int KO_MARK = 0x99E2504A;   // 劫争禁着点（半透明红）
     private static final int GHOST_BLACK = 0x66101010;
     private static final int GHOST_WHITE = 0x66F0F0F0;
-    private static final int TOAST_BG  = 0x33E5484D;
+    private static final int TOAST_BG  = 0xF0392926;
     private static final int TOAST_FG  = 0xFFFF8A8F;
 
-    private static final int MARGIN  = 10;
+    private static final int MARGIN  = 12;
     private static final int PANEL_W = 132;
     private static final int BTN_H   = 20;
     private static final int BTN_GAP = 5;
@@ -121,19 +122,19 @@ public final class GoBoardScreen extends Screen {
         int passY   = resignY - BTN_GAP - BTN_H;
         this.passRowY = passY;   // 存下 pass 行 Y，供确认态画问句复用（审查 W1）
 
-        backBtn = addRenderableWidget(Button.builder(Component.translatable("gogame.board.back"), b -> this.onClose())
-                .bounds(btnX, backY, btnW, BTN_H).build());
-        resignBtn = addRenderableWidget(Button.builder(Component.translatable("gogame.board.resign"), b -> confirmingResign = true)
-                .bounds(btnX, resignY, btnW, BTN_H).build());
-        passBtn = addRenderableWidget(Button.builder(Component.translatable("gogame.board.pass"), b -> send(Move.Kind.PASS))
-                .bounds(btnX, passY, btnW, BTN_H).build());
+        backBtn = addRenderableWidget(new GoButton(btnX, backY, btnW, BTN_H,
+                Component.translatable("gogame.board.back"), b -> this.onClose(), GoButton.Tone.SECONDARY));
+        resignBtn = addRenderableWidget(new GoButton(btnX, resignY, btnW, BTN_H,
+                Component.translatable("gogame.board.resign"), b -> confirmingResign = true, GoButton.Tone.DANGER));
+        passBtn = addRenderableWidget(new GoButton(btnX, passY, btnW, BTN_H,
+                Component.translatable("gogame.board.pass"), b -> send(Move.Kind.PASS), GoButton.Tone.PRIMARY));
 
         // 二次确认按钮与 resign 同一行，左右各半；平时隐藏
         int half = (btnW - BTN_GAP) / 2;
-        confirmYesBtn = addRenderableWidget(Button.builder(Component.translatable("gogame.board.resign.yes"), b -> doResign())
-                .bounds(btnX, resignY, half, BTN_H).build());
-        confirmNoBtn = addRenderableWidget(Button.builder(Component.translatable("gogame.board.resign.no"), b -> confirmingResign = false)
-                .bounds(btnX + half + BTN_GAP, resignY, btnW - half - BTN_GAP, BTN_H).build());
+        confirmYesBtn = addRenderableWidget(new GoButton(btnX, resignY, half, BTN_H,
+                Component.translatable("gogame.board.resign.yes"), b -> doResign(), GoButton.Tone.DANGER));
+        confirmNoBtn = addRenderableWidget(new GoButton(btnX + half + BTN_GAP, resignY, btnW - half - BTN_GAP, BTN_H,
+                Component.translatable("gogame.board.resign.no"), b -> confirmingResign = false, GoButton.Tone.SECONDARY));
         confirmYesBtn.visible = false;
         confirmNoBtn.visible = false;
     }
@@ -157,13 +158,13 @@ public final class GoBoardScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         GoPayloads.RoomState room = GoClientCache.getRoom();
         // 防御：缓存被清（离房/断线）时只画背景，真正关屏交给 tick()（见下），避免在渲染栈里 setScreen 的 NPE 风险
-        if (room == null) { renderBackground(g, mouseX, mouseY, partialTick); return; }
+        if (room == null) { drawBackdrop(g); return; }
 
         pollError();
         updateLastMove(room);
         Layout L = layout();
 
-        renderBackground(g, mouseX, mouseY, partialTick);   // 只此一次压暗世界
+        drawBackdrop(g);
         drawBoard(g, room, L, mouseX, mouseY);
         drawPanel(g, room, L);
         if (isFinished(room)) drawFinishOverlay(g, room, L);
@@ -183,7 +184,7 @@ public final class GoBoardScreen extends Screen {
         int cell = L.cell(), bx = L.bx(), by = L.by(), boardPx = L.boardPx();
         Board board = room.board();
 
-        GoUi.roundRect(g, bx, by, boardPx, boardPx, 4, GoUi.WOOD);
+        GoUi.boardSurface(g, bx, by, boardPx);
 
         // 网格：19 条线，首线在 bx+cell（四周各留 1 格木边，边缘子不被裁）
         int span = (Board.SIZE - 1) * cell;
@@ -203,14 +204,13 @@ public final class GoBoardScreen extends Screen {
         }
 
         // 棋子
-        int d = Math.max(3, cell - 1);
+        int d = Math.max(3, cell + 1);
         for (int y = 0; y < Board.SIZE; y++) {
             for (int x = 0; x < Board.SIZE; x++) {
                 Stone s = board.at(x, y);
                 if (s.isEmpty()) continue;
                 int px = cx(bx, cell, x), py = cy(by, cell, y);
-                if (d >= 6) GoUi.circle(g, px - (d + 2) / 2, py - (d + 2) / 2, d + 2, GoUi.STONE_EDGE);
-                GoUi.circle(g, px - d / 2, py - d / 2, d, s == Stone.BLACK ? GoUi.STONE_BLACK : GoUi.STONE_WHITE);
+                GoUi.stone(g, px - d / 2, py - d / 2, d, s == Stone.BLACK, true);
             }
         }
 
@@ -234,45 +234,77 @@ public final class GoBoardScreen extends Screen {
             if (xy != null && board.at(xy[0], xy[1]).isEmpty()
                     && Board.index(xy[0], xy[1]) != room.koIndex()) {
                 int ghost = myColor(room) == Stone.BLACK ? GHOST_BLACK : GHOST_WHITE;
-                GoUi.circle(g, cx(bx, cell, xy[0]) - d / 2, cy(by, cell, xy[1]) - d / 2, d, ghost);
+                int gd = Math.max(3, cell - 1);
+                GoUi.circle(g, cx(bx, cell, xy[0]) - gd / 2, cy(by, cell, xy[1]) - gd / 2, gd, ghost);
             }
         }
+    }
+
+    private void drawBackdrop(GuiGraphics g) {
+        g.fill(0, 0, this.width, this.height, 0xFF111D18);
+        GoArt.image(g, GoArt.BACKDROP, 0, 0, this.width, this.height);
+        g.fill(0, 0, this.width, this.height, 0x3009110D);
     }
 
     private void drawPanel(GuiGraphics g, GoPayloads.RoomState room, Layout L) {
         Font f = this.font;
         int lh = f.lineHeight;
+        boolean compact = this.height < 280;
         int px = L.panelX(), pw = L.panelW();
 
         // 信息卡底：撑满右列，给黑白子与浅色文字衬对比
         int cardY = L.panelY() - 5;
-        GoUi.roundRect(g, px - 5, cardY, pw + 10, (this.height - MARGIN) - cardY, 4, CARD);
+        int cardH = (this.height - MARGIN) - cardY;
+        GoUi.roundRect(g, px - 4, cardY + 2, pw + 10, cardH, 7, 0x45000000);
+        GoUi.roundRect(g, px - 5, cardY, pw + 10, cardH, 7, CARD);
+        GoUi.roundOutline(g, px - 5, cardY, pw + 10, cardH, 7, 0xFF3B4D40);
 
         int y = L.panelY();
-        g.drawString(f, tr("gogame.board.title"), px, y, TITLE, false); y += lh + 4;
-        g.drawString(f, tr("gogame.board.room") + " " + room.roomId(), px, y, SUBTLE, false); y += lh + 2;
+        GoIcon.render(g, px, y, 22);
+        g.drawString(f, tr("gogame.board.title"), px + 28, y + 1, TITLE, false);
+        String roomLine = compact ? room.roomId() + " · " + tr("gogame.board.move", room.moveNumber())
+                : tr("gogame.board.room") + " " + room.roomId();
+        g.drawString(f, GoUi.truncate(f, roomLine, pw - 28), px + 28, y + lh + 4, SUBTLE, false);
+        y += 31;
 
         boolean mine = myTurn(room);
-        String turnLine = tr("gogame.board.turn") + GoText.colorName(room.turn()) + (mine ? tr("gogame.board.you") : "");
-        g.drawString(f, GoUi.truncate(f, turnLine, pw), px, y, mine ? ACCENT : BODY, false); y += lh + 2;
-        g.drawString(f, tr("gogame.board.move", room.moveNumber()), px, y, SUBTLE, false); y += lh + 6;
-
-        if (room.phase() == GameRoom.Phase.WAITING) {
-            // 等待阶段颜色多半未定（viewOfColor 对两色都返回 null 会两行皆空），改按座位顺序列，drawPlayerRow 对 null 早退
-            y = drawPlayerRow(g, f, room, room.host(), room.capturedByBlack(), px, y, pw, lh);
-            y = drawPlayerRow(g, f, room, room.guest(), room.capturedByWhite(), px, y, pw, lh);
-        } else {
-            y = drawPlayerRow(g, f, room, viewOfColor(room, Stone.BLACK), room.capturedByBlack(), px, y, pw, lh);
-            y = drawPlayerRow(g, f, room, viewOfColor(room, Stone.WHITE), room.capturedByWhite(), px, y, pw, lh);
+        String turnLine = isFinished(room) ? tr("gogame.board.finished")
+                : isSuspended(room) ? tr("gogame.board.suspended")
+                : room.phase() == GameRoom.Phase.WAITING ? tr("gogame.board.waiting")
+                : LocalAiGame.thinking() ? tr("gogame.ai.thinking")
+                : tr("gogame.board.turn") + GoText.colorName(room.turn()) + (mine ? tr("gogame.board.you") : "");
+        int statusColor = isSuspended(room) ? WARN : mine || LocalAiGame.thinking() ? ACCENT : BODY;
+        int statusH = compact ? 17 : 23;
+        GoUi.roundRect(g, px, y, pw, statusH, 4, mine ? 0xFF29483A : 0xFF25352D);
+        GoUi.circle(g, px + 5, y + (statusH - 4) / 2, 4, statusColor);
+        g.drawString(f, GoUi.truncate(f, turnLine, pw - 17), px + 14,
+                GoUi.controlTextY(f, y, statusH), statusColor, false);
+        y += statusH + 6;
+        if (!compact) {
+            g.drawString(f, tr("gogame.board.move", room.moveNumber()), px, y, SUBTLE, false);
+            y += lh + 7;
         }
 
         if (room.phase() == GameRoom.Phase.WAITING) {
+            // 等待阶段颜色多半未定（viewOfColor 对两色都返回 null 会两行皆空），改按座位顺序列，drawPlayerRow 对 null 早退
+            y = drawPlayerRow(g, f, room, room.host(), room.capturedByBlack(), px, y, pw, lh, compact);
+            y = drawPlayerRow(g, f, room, room.guest(), room.capturedByWhite(), px, y, pw, lh, compact);
+        } else {
+            y = drawPlayerRow(g, f, room, viewOfColor(room, Stone.BLACK), room.capturedByBlack(), px, y, pw, lh, compact);
+            y = drawPlayerRow(g, f, room, viewOfColor(room, Stone.WHITE), room.capturedByWhite(), px, y, pw, lh, compact);
+        }
+
+        if (!compact && room.phase() == GameRoom.Phase.WAITING) {
             g.drawString(f, tr("gogame.board.waiting"), px, y + 2, SUBTLE, false);
-        } else if (isSuspended(room)) {
+        } else if (!compact && isSuspended(room)) {
             g.drawString(f, GoUi.truncate(f, tr("gogame.board.suspended"), pw), px, y + 2, WARN, false);
-        } else if (LocalAiGame.thinking()) {
+        } else if (!compact && LocalAiGame.thinking()) {
             // PVE：AI 请求在飞（HTTP 线程还没回 AiTurn），面板提示一行免得玩家以为卡死
             g.drawString(f, GoUi.truncate(f, tr("gogame.ai.thinking"), pw), px, y + 2, ACCENT, false);
+        }
+
+        if (passRowY - y >= lh * 2 + 14 && !confirmingResign) {
+            g.drawString(f, GoUi.truncate(f, tr("gogame.board.rules"), pw), px, passRowY - lh - 7, SUBTLE, false);
         }
 
         // 认输二次确认的问句画在 pass 那行位置（此刻 pass/resign 已隐藏）；Y 复用 init 存的 passRowY，不再另算一套公式（审查 W1）
@@ -282,40 +314,49 @@ public final class GoBoardScreen extends Screen {
     }
 
     private int drawPlayerRow(GuiGraphics g, Font f, GoPayloads.RoomState room,
-                              GoPayloads.PlayerView view, int captured, int px, int y, int pw, int lh) {
+                              GoPayloads.PlayerView view, int captured, int px, int y, int pw, int lh, boolean compact) {
         if (view == null) return y;
-        int dot = Math.max(6, lh - 1);
+        int dot = compact ? 12 : 16;
         Stone c = view.color();
-        int col = c == Stone.BLACK ? GoUi.STONE_BLACK : c == Stone.WHITE ? GoUi.STONE_WHITE : 0xFF8A8A8A;
-        // 黑子在深卡上看不清，统一先描一圈浅边
-        GoUi.circle(g, px - 1, y + (lh - dot) / 2 - 1, dot + 2, GoUi.STONE_EDGE);
-        GoUi.circle(g, px, y + (lh - dot) / 2, dot, col);
+        int rowH = compact ? 15 : lh * 2 + 9;
+        boolean current = c.isStone() && c == room.turn() && !isFinished(room);
+        GoUi.roundRect(g, px, y, pw, rowH, 4, current ? 0xFF2C3F32 : 0xFF202F28);
+        if (c.isStone()) GoUi.stone(g, px + 2, y + 1, dot, c == Stone.BLACK, false);
+        else GoUi.circle(g, px + 3, y + 3, 8, SUBTLE);
 
-        int tx = px + dot + 4;
-        int textW = pw - (dot + 4);
+        int tx = px + dot + 6;
+        int textW = pw - (dot + 10);
         boolean me = isMe(view.id());
-        String name = GoUi.truncate(f, view.name() + (me ? tr("gogame.board.you") : ""), textW);
-        g.drawString(f, name, tx, y, view.connected() ? BODY : WARN, false);
+        String count = tr("gogame.board.captured.short", captured);
+        int countW = compact ? Math.min(40, f.width(count)) : 0;
+        String name = GoUi.truncate(f, view.name() + (me ? tr("gogame.board.you") : ""), textW - countW - (compact ? 4 : 0));
+        g.drawString(f, name, tx, y + 3, view.connected() ? BODY : WARN, false);
+        if (compact) {
+            g.drawString(f, GoUi.truncate(f, count, countW), px + pw - countW - 4, y + 3, SUBTLE, false);
+            return y + rowH + 1;
+        }
         y += lh;
 
         String line2 = tr("gogame.board.captured", captured) + (view.connected() ? "" : "  " + tr("gogame.board.offline"));
-        g.drawString(f, GoUi.truncate(f, line2, textW), tx, y, SUBTLE, false);
-        return y + lh + 5;
+        g.drawString(f, GoUi.truncate(f, line2, textW), tx, y + 5, SUBTLE, false);
+        return y + lh + 12;
     }
 
     /** 终局覆盖层：居中盖在棋盘上（不含任何控件，返回键在右侧面板，二者不重叠） */
     private void drawFinishOverlay(GuiGraphics g, GoPayloads.RoomState room, Layout L) {
         Font f = this.font;
         int lh = f.lineHeight;
-        int ow = Math.min(L.boardPx(), 240), oh = lh * 2 + 24;
+        int ow = Math.min(L.boardPx() - 16, 240), oh = lh * 2 + 32;
         int ox = L.bx() + (L.boardPx() - ow) / 2;
         int oy = L.by() + (L.boardPx() - oh) / 2;
-        GoUi.roundRect(g, ox, oy, ow, oh, 5, 0xDD000000);
-        GoUi.outline(g, ox, oy, ow, oh, ACCENT);
-        GoUi.centered(g, f, tr("gogame.board.finished"), ox, oy + 8, ow, TITLE);
+        GoUi.roundRect(g, ox + 2, oy + 3, ow, oh, 7, 0x66000000);
+        GoUi.roundRect(g, ox, oy, ow, oh, 7, 0xF51B2B23);
+        GoUi.roundOutline(g, ox, oy, ow, oh, 7, GoUi.GOLD);
+        GoUi.hLine(g, ox + ow / 2 - 15, oy + 8, 30, GoUi.GOLD);
+        GoUi.centered(g, f, tr("gogame.board.finished"), ox, oy + 15, ow, TITLE);
         GameResult r = GoClientCache.getResult();
         if (r != null) {
-            GoUi.centered(g, f, GoUi.truncate(f, GoText.describeResult(r), ow - 16), ox, oy + 8 + lh + 4, ow, BODY);
+            GoUi.centered(g, f, GoUi.truncate(f, GoText.describeResult(r), ow - 16), ox, oy + 15 + lh + 4, ow, BODY);
         }
     }
 
@@ -327,6 +368,7 @@ public final class GoBoardScreen extends Screen {
         int tw = Math.min(this.width - 20, f.width(s) + 16);
         int tx = (this.width - tw) / 2, th = f.lineHeight + 8, ty = this.height - th - 6;
         GoUi.roundRect(g, tx, ty, tw, th, 3, TOAST_BG);
+        GoUi.roundOutline(g, tx, ty, tw, th, 3, 0xFFAD6B58);
         GoUi.centered(g, f, GoUi.truncate(f, s, tw - 8), tx, ty + 4, tw, TOAST_FG);
     }
 

@@ -176,6 +176,11 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
     ]
     inputs.properties replaceProperties
     expand replaceProperties
+    // Force UTF-8 for the property-expansion read/write. ProcessResources defaults to the
+    // platform charset (GBK on Chinese Windows), which corrupts the non-ASCII comments in
+    // neoforge.mods.toml into invalid UTF-8; FML's nightconfig TOML parser then throws
+    // MalformedInputException and mod discovery fails ("not a valid mod file").
+    filteringCharset = 'UTF-8'
     from "src/main/templates"
     into "build/generated/sources/modMetadata"
 }

@@ -6,6 +6,7 @@ import com.november.gogame.client.ai.AiProvider;
 import com.november.gogame.client.ai.GoAiClient;
 import com.november.gogame.client.ai.LocalAiGame;
 import com.november.gogame.client.ai.ModelListTurn;
+import com.november.gogame.client.icon.GoIcon;
 import com.november.gogame.common.game.GameResult;
 import com.november.gogame.common.game.GameRoom;
 import com.november.gogame.common.net.GoClientCache;
@@ -88,6 +89,8 @@ public final class LobbyPage implements IPhonePage {
     private final List<ClickTarget> targets = new ArrayList<>();
     /** 上一次 render 的内容区，供 mouseClicked 判断"点在页面内还是页面外" */
     private int lastX, lastY, lastW, lastH;
+    private int targetClipTop = Integer.MIN_VALUE;
+    private int targetClipBottom = Integer.MAX_VALUE;
 
     private record ClickTarget(int x, int y, int w, int h, Runnable action) {}
 
@@ -107,14 +110,24 @@ public final class LobbyPage implements IPhonePage {
         targets.clear();
         pollError();
 
+        c.clipped(c.x(), c.y(), c.width(), c.height(), () -> renderPage(c));
+    }
+
+    private void renderPage(PhoneCanvas c) {
+
         PhoneStyle s = c.style();
         GuiGraphics g = c.graphics();
         Font f = c.font();
         int x = c.x(), y = c.y(), w = c.width(), h = c.height();
         lastX = x; lastY = y; lastW = w; lastH = h;
 
-        g.drawString(f, tr("gogame.lobby.title"), x + PAD, y + PAD, s.titleColor(), false);
+        g.fill(x, y, x + w, y + h, s.screenBackground());
+        GoUi.roundRect(g, x + 2, y + 22, w - 4, h - 24, 5,
+                GoUi.mix(s.screenBackground(), s.accentColor(), 0.035F));
+        GoIcon.render(g, x + PAD, y + PAD - 1, 14);
+        g.drawString(f, tr("gogame.lobby.title"), x + PAD + 20, y + PAD + 2, s.titleColor(), false);
         int cy = y + PAD + f.lineHeight + GAP + 2;
+        GoUi.hLine(g, x + PAD, cy - 1, w - 2 * PAD, GoUi.mix(s.screenBackground(), s.subtleColor(), 0.23F));
 
         GoPayloads.RoomState room = GoClientCache.getRoom();
         if (room == null) {
@@ -140,15 +153,32 @@ public final class LobbyPage implements IPhonePage {
     private void renderMenu(PhoneCanvas c, int cy) {
         int x = c.x() + PAD, w = c.width() - 2 * PAD;
         int y = cy;
-        button(c, x, y, w, BTN_H, tr("gogame.lobby.create"), true, () -> view = View.CREATE);
-        y += BTN_H + GAP;
-        button(c, x, y, w, BTN_H, tr("gogame.lobby.join"), true, () -> { view = View.JOIN; roomIdFocused = true; });
-        y += BTN_H + GAP;
-        button(c, x, y, w, BTN_H, tr("gogame.lobby.ai"), true, () -> view = View.AI);
-        y += BTN_H + GAP + 2;
+        boolean spacious = c.y() + c.height() - PAD - cy >= 150;
+        if (spacious) {
+            PhoneStyle s = c.style();
+            GoUi.roundRect(c.graphics(), x, y, w, 42, 5, GoUi.mix(s.buttonColor(), s.accentColor(), 0.10F));
+            GoUi.roundOutline(c.graphics(), x, y, w, 42, 5, GoUi.mix(s.buttonColor(), s.accentColor(), 0.28F));
+            GoIcon.render(c.graphics(), x + 5, y + 5, 32);
+            c.graphics().drawString(c.font(), GoUi.truncate(c.font(), tr("gogame.lobby.hero.title"), w - 47),
+                    x + 42, y + 11, s.titleColor(), false);
+            c.graphics().drawString(c.font(), GoUi.truncate(c.font(), tr("gogame.lobby.hero.subtitle"), w - 47),
+                    x + 42, y + 24, s.subtleColor(), false);
+            y += 42 + GAP;
+        }
+        int cardH = spacious ? 28 : 22;
+        menuCard(c, x, y, w, cardH, "gogame.lobby.create", "gogame.lobby.create.subtitle", 0,
+                () -> view = View.CREATE);
+        y += cardH + GAP;
+        menuCard(c, x, y, w, cardH, "gogame.lobby.join", "gogame.lobby.join.subtitle", 1,
+                () -> { view = View.JOIN; roomIdFocused = true; });
+        y += cardH + GAP;
+        menuCard(c, x, y, w, cardH, "gogame.lobby.ai", "gogame.lobby.ai.subtitle", 2,
+                () -> view = View.AI);
+        y += cardH + GAP + 2;
         // hint 可能超一行宽：按语言文件里的 \n 逐行绘制、每行 truncate 兜底（验收修复：原先整行直画，窄屏下文字漏出手机右边界）
         int lh = c.font().lineHeight + 1;
         for (String line : tr("gogame.lobby.hint").split("\n")) {
+            if (y + c.font().lineHeight > c.y() + c.height() - PAD) break;
             c.graphics().drawString(c.font(), GoUi.truncate(c.font(), line, w), x, y, c.style().subtleColor(), false);
             y += lh;
         }
@@ -193,13 +223,13 @@ public final class LobbyPage implements IPhonePage {
 
         // 房间号输入框（凹陷底 + 边框，聚焦时边框用强调色 + 闪烁光标）
         GoUi.roundRect(g, x, y, w, BTN_H, 2, SUNKEN);
-        GoUi.outline(g, x, y, w, BTN_H, roomIdFocused ? s.accentColor() : s.subtleColor());
+        GoUi.roundOutline(g, x, y, w, BTN_H, 3, roomIdFocused ? s.accentColor() : GoUi.mix(s.buttonColor(), s.subtleColor(), 0.5F));
         String txt = roomIdInput.toString();
         g.drawString(f, txt, x + 3, GoUi.controlTextY(f, y, BTN_H), s.titleColor(), false);
         if (roomIdFocused && (System.currentTimeMillis() / 500) % 2 == 0) {
             GoUi.vLine(g, x + 3 + f.width(txt) + 1, y + 3, BTN_H - 6, s.titleColor());
         }
-        targets.add(new ClickTarget(x, y, w, BTN_H, () -> roomIdFocused = true));
+        addTarget(x, y, w, BTN_H, () -> roomIdFocused = true);
         y += BTN_H + GAP * 2;
 
         button(c, x, y, w, BTN_H, tr("gogame.lobby.join.go"), true, this::submitJoin);
@@ -229,7 +259,7 @@ public final class LobbyPage implements IPhonePage {
         int maxScroll = Math.max(0, contentH - viewH);
         aiScroll = Math.clamp(aiScroll, 0, maxScroll);
 
-        c.clipped(c.x(), listTop, c.width(), viewH, () -> {
+        clippedList(c, listTop, viewH, () -> {
             int ry = listTop - aiScroll;
             for (AiDifficulty d : all) {
                 if (ry + ROW_H >= listTop && ry <= listBottom) {   // 仅可见行才登记点击目标
@@ -322,7 +352,7 @@ public final class LobbyPage implements IPhonePage {
         modelScroll = Math.clamp(modelScroll, 0, maxScroll);
 
         String current = AiConfig.get().model();
-        c.clipped(c.x(), listTop, c.width(), viewH, () -> {
+        clippedList(c, listTop, viewH, () -> {
             int ry = listTop - modelScroll;
             for (String m : models) {
                 if (ry + ROW_H >= listTop && ry <= listBottom) {   // 仅可见行才登记点击目标
@@ -344,12 +374,12 @@ public final class LobbyPage implements IPhonePage {
         g.drawString(f, tr(labelKey), x, y, s.subtleColor(), false);
         y += f.lineHeight + 1;
         GoUi.roundRect(g, x, y, w, BTN_H, 2, SUNKEN);
-        GoUi.outline(g, x, y, w, BTN_H, editing == field ? s.accentColor() : s.subtleColor());
+        GoUi.roundOutline(g, x, y, w, BTN_H, 3, editing == field ? s.accentColor() : GoUi.mix(s.buttonColor(), s.subtleColor(), 0.5F));
         g.drawString(f, GoUi.truncate(f, value, w - 6), x + 3, GoUi.controlTextY(f, y, BTN_H), s.titleColor(), false);
         if (editing == field && (System.currentTimeMillis() / 500) % 2 == 0) {
             GoUi.vLine(g, x + 3 + f.width(GoUi.truncate(f, value, w - 6)) + 1, y + 3, BTN_H - 6, s.titleColor());
         }
-        targets.add(new ClickTarget(x, y, w, BTN_H, () -> beginEdit(field)));
+        addTarget(x, y, w, BTN_H, () -> beginEdit(field));
         return y + BTN_H + GAP;
     }
 
@@ -362,9 +392,9 @@ public final class LobbyPage implements IPhonePage {
         g.drawString(f, tr(labelKey), x, y, s.subtleColor(), false);
         y += f.lineHeight + 1;
         GoUi.roundRect(g, x, y, w, BTN_H, 2, SUNKEN);
-        GoUi.outline(g, x, y, w, BTN_H, s.subtleColor());
+        GoUi.roundOutline(g, x, y, w, BTN_H, 3, GoUi.mix(s.buttonColor(), s.subtleColor(), 0.5F));
         g.drawString(f, GoUi.truncate(f, value, w - 6), x + 3, GoUi.controlTextY(f, y, BTN_H), s.titleColor(), false);
-        targets.add(new ClickTarget(x, y, w, BTN_H, onClick));
+        addTarget(x, y, w, BTN_H, onClick);
         return y + BTN_H + GAP;
     }
 
@@ -422,7 +452,7 @@ public final class LobbyPage implements IPhonePage {
         int maxScroll = Math.max(0, contentH - viewH);
         onlineScroll = Math.clamp(onlineScroll, 0, maxScroll);
 
-        c.clipped(c.x(), listTop, c.width(), viewH, () -> {
+        clippedList(c, listTop, viewH, () -> {
             int ry = listTop - onlineScroll;
             for (GoPayloads.GoOnlinePlayer p : players) {
                 if (ry + ROW_H >= listTop && ry <= listBottom) {   // 仅可见行才登记点击目标
@@ -493,7 +523,7 @@ public final class LobbyPage implements IPhonePage {
 
         int boxH = f.lineHeight * 2 + BTN_H + GAP * 2 + 4;
         GoUi.roundRect(g, x, y, w, boxH, 3, SUNKEN);
-        GoUi.outline(g, x, y, w, boxH, s.accentColor());
+        GoUi.roundOutline(g, x, y, w, boxH, 3, s.accentColor());
 
         String line = GoUi.truncate(f, tr("gogame.lobby.invite.from", inv.hostName()), w - 8);
         g.drawString(f, line, x + 4, y + 4, s.titleColor(), false);
@@ -531,23 +561,76 @@ public final class LobbyPage implements IPhonePage {
     // 绘制零件
     // ------------------------------------------------------------------
 
+    private void menuCard(PhoneCanvas c, int x, int y, int w, int h, String titleKey, String subtitleKey,
+                          int glyph, Runnable action) {
+        PhoneStyle s = c.style();
+        GuiGraphics g = c.graphics();
+        boolean hovered = c.hovered(x, y, w, h);
+        GoUi.button(g, c.font(), x, y, w, h, "", true, hovered,
+                s.buttonColor(), s.buttonHoverColor(), s.buttonDisabledColor(), s.titleColor(), s.buttonDisabledTextColor());
+        GoUi.roundRect(g, x + 4, y + (h - 18) / 2, 20, 18, 4,
+                GoUi.mix(s.buttonColor(), s.accentColor(), 0.17F));
+        int gx = x + 7, gy = y + (h - 14) / 2;
+        if (glyph == 0) {
+            GoUi.stone(g, gx, gy + 1, 9, true, false);
+            GoUi.stone(g, gx + 5, gy + 5, 9, false, false);
+        } else if (glyph == 1) {
+            GoUi.roundOutline(g, gx + 1, gy + 1, 12, 12, 2, s.accentColor());
+            for (int dx = 0; dx < 2; dx++) for (int dy = 0; dy < 2; dy++)
+                g.fill(gx + 4 + dx * 4, gy + 4 + dy * 4, gx + 6 + dx * 4, gy + 6 + dy * 4, s.accentColor());
+        } else {
+            GoUi.roundOutline(g, gx + 2, gy + 3, 10, 9, 2, s.accentColor());
+            GoUi.vLine(g, gx + 7, gy, 3, s.accentColor());
+            GoUi.hLine(g, gx, gy + 7, 2, s.accentColor());
+            GoUi.hLine(g, gx + 12, gy + 7, 2, s.accentColor());
+            GoUi.circle(g, gx + 4, gy + 6, 2, s.accentColor());
+            GoUi.circle(g, gx + 8, gy + 6, 2, s.accentColor());
+        }
+        int titleY = h >= 28 ? y + 4 : GoUi.controlTextY(c.font(), y, h);
+        g.drawString(c.font(), GoUi.truncate(c.font(), tr(titleKey), w - 34), x + 29, titleY, s.titleColor(), false);
+        if (h >= 28) g.drawString(c.font(), GoUi.truncate(c.font(), tr(subtitleKey), w - 34),
+                x + 29, y + 15, s.subtleColor(), false);
+        addTarget(x, y, w, h, action);
+    }
+
+    /** Clip hit areas as well as pixels, so scrolled rows cannot cover the fixed footer. */
+    private void clippedList(PhoneCanvas c, int top, int height, Runnable draw) {
+        int previousTop = targetClipTop, previousBottom = targetClipBottom;
+        targetClipTop = Math.max(previousTop, top);
+        targetClipBottom = Math.min(previousBottom, top + height);
+        try {
+            c.clipped(c.x(), top, c.width(), height, draw);
+        } finally {
+            targetClipTop = previousTop;
+            targetClipBottom = previousBottom;
+        }
+    }
+
+    private void addTarget(int x, int y, int w, int h, Runnable action) {
+        int left = Math.max(x, lastX), top = Math.max(Math.max(y, lastY), targetClipTop);
+        int right = Math.min(x + w, lastX + lastW);
+        int bottom = Math.min(Math.min(y + h, lastY + lastH), targetClipBottom);
+        if (right > left && bottom > top) targets.add(new ClickTarget(left, top, right - left, bottom - top, action));
+    }
+
     private void button(PhoneCanvas c, int x, int y, int w, int h, String label, boolean enabled, Runnable action) {
         PhoneStyle s = c.style();
         boolean hov = c.hovered(x, y, w, h);
         GoUi.button(c.graphics(), c.font(), x, y, w, h, label, enabled, hov,
                 s.buttonColor(), s.buttonHoverColor(), s.buttonDisabledColor(),
                 s.titleColor(), s.buttonDisabledTextColor());
-        if (enabled) targets.add(new ClickTarget(x, y, w, h, action));
+        if (enabled) addTarget(x, y, w, h, action);
     }
 
     /** 单选按钮：选中时用强调色底 */
     private void choice(PhoneCanvas c, int x, int y, int w, int h, String label, boolean selected, Runnable action) {
         PhoneStyle s = c.style();
         boolean hov = c.hovered(x, y, w, h);
-        int bg = selected ? s.accentColor() : s.buttonColor();
+        int bg = selected ? GoUi.mix(s.buttonColor(), s.accentColor(), 0.3F) : s.buttonColor();
         GoUi.button(c.graphics(), c.font(), x, y, w, h, label, true, hov && !selected,
                 bg, s.buttonHoverColor(), s.buttonDisabledColor(), s.titleColor(), s.buttonDisabledTextColor());
-        targets.add(new ClickTarget(x, y, w, h, action));
+        if (selected) GoUi.roundOutline(c.graphics(), x, y, w, h, 4, s.accentColor());
+        addTarget(x, y, w, h, action);
     }
 
     // ------------------------------------------------------------------
@@ -654,7 +737,7 @@ public final class LobbyPage implements IPhonePage {
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         boolean inside = GoUi.hit(mx, my, lastX, lastY, lastW, lastH);
-        if (button == 0) {
+        if (button == 0 && inside) {
             for (ClickTarget t : targets) {
                 if (GoUi.hit(mx, my, t.x, t.y, t.w, t.h)) { t.action.run(); return true; }
             }

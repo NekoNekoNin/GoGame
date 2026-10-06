@@ -21,9 +21,9 @@ public final class GoUi {
 
     // ---- 棋盘配色（全屏棋盘用；手机内页一律走 PhoneStyle，不用这几个）----
     /** 棋盘木色底 */
-    public static final int WOOD       = 0xFFDCB35C;
+    public static final int WOOD       = 0xFFDBB67B;
     /** 棋盘网格线（深棕） */
-    public static final int GRID       = 0xFF4A3418;
+    public static final int GRID       = 0xC04E3823;
     /** 黑子 */
     public static final int STONE_BLACK = 0xFF151515;
     /** 白子 */
@@ -32,22 +32,75 @@ public final class GoUi {
     public static final int STONE_EDGE  = 0x66000000;
     /** 最后一手标记 */
     public static final int LAST_MOVE   = 0xFFE2504A;
+    public static final int JADE        = 0xFF93C7AE;
+    public static final int IVORY       = 0xFFF3EADB;
+    public static final int GOLD        = 0xFFD6B47A;
 
     // ------------------------------------------------------------------
     // 形状
     // ------------------------------------------------------------------
 
-    /** 圆角矩形。角是 45° 切出来的——这块屏上半径最多几像素，斜边与圆弧看不出区别，且不用开方 */
+    /** True circular corners, including larger cards and modals. */
     public static void roundRect(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
         if (w <= 0 || h <= 0) return;
         int r = Math.clamp(radius, 0, Math.min(w, h) / 2);
         if (r == 0) { g.fill(x, y, x + w, y + h, color); return; }
         g.fill(x, y + r, x + w, y + h - r, color);
         for (int i = 0; i < r; i++) {
-            int inset = r - i - 1;
+            double dy = r - i - 0.5;
+            int inset = (int) Math.ceil(r - Math.sqrt(Math.max(0, r * r - dy * dy)));
             g.fill(x + inset, y + i, x + w - inset, y + i + 1, color);
             g.fill(x + inset, y + h - 1 - i, x + w - inset, y + h - i, color);
         }
+    }
+
+    public static int mix(int a, int b, float amount) {
+        float t = Math.clamp(amount, 0.0F, 1.0F);
+        int out = 0;
+        for (int shift : new int[]{24, 16, 8, 0}) {
+            int value = Math.round(((a >>> shift) & 255) * (1 - t) + ((b >>> shift) & 255) * t);
+            out |= value << shift;
+        }
+        return out;
+    }
+
+    /** Rounded one-pixel border without repainting the inside. */
+    public static void roundOutline(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
+        if (w <= 1 || h <= 1) return;
+        int r = Math.clamp(radius, 1, Math.min(w, h) / 2);
+        hLine(g, x + r, y, w - 2 * r, color);
+        hLine(g, x + r, y + h - 1, w - 2 * r, color);
+        vLine(g, x, y + r, h - 2 * r, color);
+        vLine(g, x + w - 1, y + r, h - 2 * r, color);
+        for (int dy = 0; dy < r; dy++) {
+            double yy = r - dy - 0.5;
+            int inset = (int) Math.ceil(r - Math.sqrt(Math.max(0, r * r - yy * yy)));
+            g.fill(x + inset, y + dy, x + inset + 1, y + dy + 1, color);
+            g.fill(x + w - inset - 1, y + dy, x + w - inset, y + dy + 1, color);
+            g.fill(x + inset, y + h - dy - 1, x + inset + 1, y + h - dy, color);
+            g.fill(x + w - inset - 1, y + h - dy - 1, x + w - inset, y + h - dy, color);
+        }
+    }
+
+    /** Light wood grain; the grid is separate so intersections remain exact. */
+    public static void boardSurface(GuiGraphics g, int x, int y, int size) {
+        roundRect(g, x + 2, y + 4, size, size, 6, 0x55000000);
+        roundRect(g, x, y, size, size, 5, 0xFF785536);
+        roundRect(g, x + 1, y + 1, size - 2, size - 2, 4, 0xFFF0D29C);
+        roundRect(g, x + 3, y + 3, size - 6, size - 6, 3, WOOD);
+        for (int i = 7; i < size - 7; i += 6) {
+            int offset = (i * 37) % 17;
+            vLine(g, x + i, y + 5 + offset, Math.max(0, size - 12 - offset), 0x093F2918);
+            vLine(g, x + i + 1, y + 6, Math.max(0, size - 14 - offset), 0x0BFFF0CE);
+        }
+        hLine(g, x + 6, y + 4, size - 12, 0x55FFF5D8);
+    }
+
+    /** Stone artwork shared by the board, player cards, and lobby. */
+    public static void stone(GuiGraphics g, int x, int y, int size, boolean black, boolean shadow) {
+        if (size <= 0) return;
+        if (shadow && size >= 6) circle(g, x + 1, y + 2, size - 1, 0x38000000);
+        GoArt.image(g, black ? GoArt.BLACK_STONE : GoArt.WHITE_STONE, x, y, size, size);
     }
 
     /**
@@ -139,7 +192,9 @@ public final class GoUi {
                               int bgColor, int hoverColor, int disabledColor,
                               int textColor, int disabledTextColor) {
         int fill = !enabled ? disabledColor : (hovered ? hoverColor : bgColor);
-        roundRect(g, x, y, w, h, 3, fill);
+        roundRect(g, x, y + 1, w, h, 4, 0x26000000);
+        roundRect(g, x, y, w, h, 4, fill);
+        roundOutline(g, x, y, w, h, 4, mix(fill, textColor, hovered && enabled ? 0.34F : 0.12F));
         int fg = enabled ? textColor : disabledTextColor;
         centered(g, font, truncate(font, label, w - 6), x, controlTextY(font, y, h), w, fg);
     }

@@ -1,5 +1,7 @@
 # GoGame —— mcphone 手机里的围棋 App
 
+完整的安装、玩法、AI 设置、界面预览与开发说明请阅读 [仓库首页 README](../README.md)。以下为构建工程的简要索引。
+
 Minecraft **1.21.1 NeoForge** 附属模组（[mcphone](https://github.com/november521/mcphone) 1.9.3+）：在手机里加一个「围棋」App。
 
 ## 功能
@@ -23,9 +25,10 @@ Minecraft **1.21.1 NeoForge** 附属模组（[mcphone](https://github.com/novemb
 游戏内手机「AI 设置」页或 `run/config/gogame/config.json`（Gson 明文）：按服务方各记一套 Key / Base URL / Model，当场改当场生效；界面只显示 Key 末四位。
 
 ## 文档
-- `docs/PROJECT_LOG.md` —— 各 Phase 进度与验收记录
-- `docs/PITFALLS.md` —— 踩坑录（症状→根因→修复→教训）
-- `docs/TECH_STACK.md` —— 技术栈与仓库说明
+- [PROJECT_LOG.md](../docs/PROJECT_LOG.md) —— 各 Phase 进度与验收记录
+- [PITFALLS.md](../docs/PITFALLS.md) —— 踩坑录（症状→根因→修复→教训）
+- [TECH_STACK.md](../docs/TECH_STACK.md) —— 技术栈与仓库说明
+- [UI_ASSETS.md](../docs/UI_ASSETS.md) —— 界面素材和像素图标说明
 
 ## Mapping Names
 本模组使用 Mojang 官方映射名，其许可见 https://github.com/NeoForged/NeoForm/blob/main/Mojang.md

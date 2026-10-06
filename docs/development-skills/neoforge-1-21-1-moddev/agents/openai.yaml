@@ -1,0 +1,4 @@
+interface:
+  display_name: "NeoForge 1.21.1 模组开发"
+  short_description: "开发和调试 Minecraft 1.21.1 NeoForge 模组及 MCphone 附属"
+  default_prompt: "使用 $neoforge-1-21-1-moddev 按项目现有版本和架构继续开发，核对 API 并验证本次改动。"

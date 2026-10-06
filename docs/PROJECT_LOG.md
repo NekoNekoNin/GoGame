@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-10-06
+
+### 仓库同步准备与首页 README 整理
+- **目标确认**：用户最初提供的 Home-Tutoring-Service-System 仓库包含家教系统的 frontend/backend，与本地围棋项目不同；经用户确认，本次更新目标为原仓库 `NekoNekoNin/GoGame`，保留原 origin 配置。
+- **README**：重写仓库首页，补充产品介绍、界面预览、功能、版本依赖、安装、PVP/PVE 使用方法、AI 配置、构建与调试命令、源码结构、文档索引和验证范围。工程目录的 README 增加首页链接并修正文档相对路径。
+- **本次提交范围**：同步此前已完成的界面素材、原生 20×20 像素图标、大厅和棋盘 UI 改动，以及版本开发技能、素材说明、预览和 UTF-8 元数据修复。游戏存档、个人 AI 配置、构建缓存与两个独立参考仓库沿用现有忽略规则。
+- **验证**：进程内 JDK 25 执行 `gradlew.bat --offline build test --rerun` 成功，8 组 101 项测试重新运行，0 失败 / 0 错误；首页及工程 README 的本地文档与图片链接存在性检查通过，`git diff --check` 通过。本次未重新启动游戏、未执行双客户端完整对局或调用 AI API。
+
+---
+
+## 2026-10-01
+
+### 游戏截图反馈：应用图标改为原生 20×20 像素风格
+- **用户反馈**：高清围棋图标与手机桌面其他应用的像素风格不一致，要求替换为精美像素图标。
+- **规格核对**：实际依赖 `mcphone-1.9.3.jar` 的设置、相机、商店、时钟和天气图标均为 20×20 RGBA。参照相同规格重绘围棋图标：16 色调色板、阶梯圆角、暖木棋盘、像素黑白子与高光，全透明/全不透明像素，无模糊轮廓。
+- **交付**：现有 `go-v2.png` 和根目录 `gogame-logo.png` 替换为同内容 20×20 版本；图标 metadata 的 blur 和 NeoForge logoBlur 均关闭，背景和棋子的平滑配置保留。所有使用 GoIcon 的主屏、商店与页面同步换风格。高清旧图移至 `docs/ui-asset-archive/go-hd.png`，不进入 JAR。
+- **可维护性**：新增 `tools/GeneratePixelIcon.java` 保留原生像素绘制源，可重现图标、Logo、metadata 和最近邻放大预览。补充像素图标与实际依赖中原生图标的比较预览，更新原有界面预览与 `docs/UI_ASSETS.md`。
+- **验证**：`gradlew.bat --offline build` 成功，8 组 101 项测试 0 失败 / 0 错误；PNG 尺寸、16 色调色板、二值透明度、关闭平滑、Logo 内容一致性及 JAR 打包检查通过，MCphone 未被打包。查看原生图标比较预览；当前开发客户端的实际显示仍由游戏内资源重载验收，本次未修改业务代码或调用 AI API。
+
+### 界面与素材美化：棋室背景、立体棋子、应用图标与大厅卡片
+- **用户要求**：改善 GoGame 的 UI、背景图、棋子和软件图标，让界面更美观。
+- **视觉风格**：深青玉与墨色山景衬底，暖木棋盘与轻微木纹，亮面黑白棋子，青玉强调色。新 PNG 由 Codex 内置图像生成工具分别生成；背景不透明、棋子与图标保留透明通道。文件和实际 prompt 见 `docs/UI_ASSETS.md`。
+- **素材接入**：新增 GoArt 统一资源位置与整幅图 UV；GoIcon 改用版本化的 `textures/app/go-v2.png`，主屏、商店与页面标题一致；新增根目录 `gogame-logo.png` 并声明 `logoFile`，用于 NeoForge 模组列表。PNG metadata 启用平滑与边缘钳制。
+- **对局界面**：暖木边框与立体棋子替代纯色棋盘/圆点；信息卡增加图标、回合状态条与双方棋子标识；低于 280 GUI 像素高度时采用紧凑排版，房间号与手数合并显示。GoButton 保留原版按钮的点击、键盘焦点和朗读行为，同时统一三种按钮配色。终局与错误提示同步改善边框和对比。
+- **手机大厅**：入口改为带说明与小图形的卡片；主题色继续取 PhoneStyle。页面绘制整体裁剪，三个滚动列表的点击目标也按列表视口裁剪，避免已滚出的行截获固定底部按钮点击。新增文案补齐中英双语。
+- **验证**：进程内 JDK 25 运行 `gradlew.bat --offline build` 成功（Java 输出 21），8 组 101 项既有测试 0 失败 / 0 错误；新素材、MCphone SPI 和 Logo 元数据均进入 JAR，MCphone 本体未被打包。`runClient` 启动日志确认 GoGame 已加载、客户端 setup 完成、`gogame:go` 注册成功、资源重载完成；完成检查后中断本次开发客户端。
+- **视觉检查范围**：用生产 GoUi/GoArt/GoIcon 加 AWT 适配器生成并查看对局 427×240 / 320×180 与手机 120×200 的组件预览，见 `docs/ui-preview/`。这是样式预览，不是游戏截图；未进入对局，游戏内实际渲染/交互与双人流程仍待验收，未调用付费 AI 接口。
+- **范围保持**：未调整 19×19 规则、贴目、PVP 仲裁或 AI 请求逻辑；保留接手前的 UTF-8 模板修复。当前实现依然只面向 NeoForge 1.21.1，未进行 Forge 移植。
+
+---
+
+## 2026-09-30
+
+### 开发接手：NeoForge 1.21.1 / Forge 1.20.1 开发技能与当前基线
+- **用户要求**：自行搜索两个指定平台版本的模组开发 skill，接手后续开发。
+- **搜索与选型**：查阅 `guguzea/MC-AI-Coding-Assistant-Tool`、`Jahrome907/minecraft-agent-skills`、`xingluo01/neoforge-dev-1.21.1-skill` 的候选说明；使用 Codex 官方安装脚本取得 guguzea 仓库中两个精确版本的 `mc-networking` 正文，以各版本官方文档核对关键网络、端隔离和 GUI 接口。未安装候选套件所依赖的第三方 MCP 服务。
+- **交付**：将两个网络技能适配并扩展为 `neoforge-1-21-1-moddev` / `forge-1-20-1-moddev`，覆盖构建、事件、网络、UI、MCphone SPI、调试和验证；源码在 `docs/development-skills/`，已安装到本机 `C:\Users\29079\.codex\skills\`。各包保留上游许可、来源链接和下载正文 SHA-256。两份 skill 均通过官方 `quick_validate.py`，安装副本与项目源码逐文件一致。
+- **项目约定**：新增根目录 `AGENTS.md`，记录平台技能路由、GoGame 架构、依赖 JAR 与参考源码版本差异、验证方式和既有 UTF-8 修复。GoGame 当前仍只有 NeoForge 1.21.1 实现；Forge 技能就绪不代表已移植，后续按实际任务选择目标。
+- **本次验证**：使用进程内 JDK 25 运行项目 Wrapper，`gradlew.bat --offline build test --rerun` 成功；8 组 **101 项测试重新运行，0 失败 / 0 错误**。发布 JAR 内 `neoforge.mods.toml` 严格 UTF-8 解码通过、变量已展开；69 个业务 class 均为 major 65（Java 21），未包含 MCphone 本体 class。
+- **验证范围**：本次未启动游戏或调用付费 AI API，未重新进行双客户端端到端验收。保留接手前 `build.gradle` 与 `docs/PITFALLS.md` 的未提交 UTF-8 修复，未修改业务代码或全局 Java 配置。
+
+---
+
 ## 2026-09-15
 
 ### 🐛 验收修复：围棋图标严格居中 + AI 空回复红框及其根因（推理模型额度饥饿）

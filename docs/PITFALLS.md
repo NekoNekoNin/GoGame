@@ -120,6 +120,12 @@
 
 > 详细版见 `mcphone-api-ui-reference.md` §3 陷阱清单，此处列最易踩的。
 
+### E13. 高清应用图标与 MCphone 原生像素风格不一致（2026-10-01）
+- **症状**：用户游戏截图中，围棋的高清木质图标显得光滑、细碎，与周围设置、商店、时钟等像素图标不协调。
+- **根因**：围棋图标使用 1254×1254 RGBA 图并启用 blur，原生应用图标在实际依赖 JAR 中是 20×20 RGBA；缩小尺寸不能自动得到相同的像素语言。
+- **修复**：按 20×20 原生网格重新绘制，采用 16 色调色板和二值透明度，使用阶梯轮廓与少量像素高光；应用 PNG 的 metadata 关闭 blur，根目录 Logo 的 logoBlur 同样关闭。主屏、商店、页内图标仍共用同一张纹理。
+- **教训**：手机桌面图标先核对实际依赖里的源像素尺寸、轮廓和采样方式，再设计素材；像素贴图关闭平滑，高清背景/棋子可分别保留平滑设置。代码路径不变的纹理替换可在开发客户端通过资源重载查看。
+
 ### E1. `enableScissor` 裁剪错位
 - **根因**：原版 scissor 收窗口物理坐标且不看 PoseStack；手机界面可缩放 75%–300%
 - **修复**：一律用 `PhoneCanvas.clipped(x, y, w, h, Runnable)`（可嵌套、异常也收回裁剪）
@@ -230,6 +236,16 @@
 - **根因**：两处叠加。①`Get-Content -Raw` 不带 `-Encoding UTF8` 读无 BOM 的 UTF-8 lang 文件按 ANSI 解码 → 乱码字符破坏 JSON 串；②`.ps1` 脚本本身存为无 BOM UTF-8，PS 5.1 按 ANSI 解析源码 → 脚本内中文字面量在解析期就乱码（输出标题乱码由此来）
 - **修复**：读文件一律 `Get-Content -Encoding UTF8`；脚本纯 ASCII 化或带 BOM 保存；结果 `Out-File -Encoding UTF8` 写文件后用 Read 工具回读（控制台 GBK 同样乱码，不可信）
 - **教训**：本机默认 shell 是 Windows PowerShell 5.1：凡读无 BOM UTF-8 文本（json/lang/md）或跑含中文的脚本，**显式声明编码**；控制台显示乱码与文件内容乱码是两回事，别据控制台表象误判数据坏了
+
+---
+
+## K. Gradle 构建 / 资源处理
+
+### K1. ProcessResources 变量展开默认用平台字符集（GBK）→ neoforge.mods.toml 含非法 UTF-8 → mod 发现崩「not a valid mod file」
+- **症状**：`gradlew runClient` 在 mod 发现阶段崩，crash report：`File ...\build\classes\java\main is not a valid mod file` + `java.nio.charset.MalformedInputException: Input length = 2`，栈顶是 `nightconfig...toml.Toml.readUseful` → `ModFileParser.modsTomlParser`；`gradlew build` 却能成功（打包不解析 toml），jar 核查也看不出——只有真正加载 mod 时才炸
+- **根因**：`generateModMetadata`（ProcessResources + `expand`）没设 `filteringCharset`，默认用平台字符集（中文 Windows = GBK）读模板做变量展开；而 `src/main/templates/META-INF/neoforge.mods.toml` 里的中文注释是 UTF-8 字节，被当 GBK 读→再写→产出非法 UTF-8（实测源模板 5458B VALID_UTF8，生成物 5261B INVALID_UTF8，偏移 3462 处 `[E5][9C]` 无法解码）。FML 的 nightconfig TOML 解析器用严格 UTF-8 解码器，遇非法字节直接抛
+- **修复**：在 `generateModMetadata` task 里加 `filteringCharset = 'UTF-8'`（与 `JavaCompile.options.encoding='UTF-8'` 对齐）；改完删掉 `build/generated/.../neoforge.mods.toml` 与 `build/resources/main/META-INF/neoforge.mods.toml` 强制重生成，再复验生成物为 VALID_UTF8
+- **教训**：凡对含非 ASCII 的文本资源做 Gradle 过滤/展开（ProcessResources、Copy.filter、expand），**必须显式设 `filteringCharset='UTF-8'`**，否则在 GBK 本机静默产出坏字节；`build` 成功 ≠ mod 能加载，toml 解析只在运行时发生
 
 ---
 
